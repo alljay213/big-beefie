@@ -27,50 +27,6 @@ function Checkout() {
   const tax = subtotal * 0.15;
   const amount = Math.round((subtotal + tax) * 100);
 
-  //   const handleSubmit = async (e) => {
-  //     e.preventDefault();
-  //     if (!name || !phone || !pickupTime) {
-  //       setError("Please fill in all required fields.");
-  //       return;
-  //     }
-
-  //     setError(null);
-  //     setLoading(true);
-
-  //     const stripe = await stripePromise;
-
-  //     if (paymentMethod === "card") {
-  //       // Create checkout session on serverless function or backend
-  //       const res = await fetch("/.netlify/functions/create-checkout-session", {
-  //         method: "POST",
-  //         headers: { "Content-Type": "application/json" },
-  //         body: JSON.stringify({ cart, name, phone, pickupTime, notes, amount }),
-  //       });
-  //       const { sessionUrl } = await res.json();
-  //       window.location = sessionUrl;
-  //     } else if (paymentMethod === "cash") {
-  //       // Handle cash: save order via API and navigate to success
-  //       const res = await fetch("/.netlify/functions/save-order", {
-  //         method: "POST",
-  //         headers: { "Content-Type": "application/json" },
-  //         body: JSON.stringify({
-  //           cart,
-  //           name,
-  //           phone,
-  //           pickupTime,
-  //           notes,
-  //           paymentMethod: "Cash",
-  //         }),
-  //       });
-  //       if (res.ok) {
-  //         clearCart();
-  //         window.location = "/success";
-  //       } else {
-  //         setError("Something went wrong saving your order.");
-  //       }
-  //     }
-  //     setLoading(false);
-  //   };
   const handleSubmit = async (e) => {
     e.preventDefault();
 
@@ -83,35 +39,45 @@ function Checkout() {
     setLoading(true);
 
     try {
-      await fetch(
-        "https://script.google.com/macros/s/AKfycbx5SseF4pDbDfl_7suKP7wqqdmaaQGhyfO5-fehgcmbRxHoNUVwavm5yvmrrpgXKQo2Tg/exec",
-
-        {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify({
+      // Insert order into Supabase
+      const { data: order, error: orderError } = await supabase
+        .from("orders")
+        .insert([
+          {
             name,
             phone,
-            pickupTime,
+            pickup_time: pickupTime,
             notes,
-            paymentMethod,
-            cart,
+            payment_method: "cash",
             total: amount / 100,
-          }),
-        }
-      );
+          },
+        ])
+        .select()
+        .single();
 
-      setTimeout(() => {
-        clearCart();
-        window.location = "/success";
-      }, 1000);
+      if (orderError) throw orderError;
+
+      // Insert cart items with reference to the order ID
+      const items = cart.map((item) => ({
+        order_id: order.id,
+        item_name: item.name,
+        quantity: item.quantity,
+        price: item.price,
+      }));
+
+      const { error: itemsError } = await supabase
+        .from("order_items")
+        .insert(items);
+      if (itemsError) throw itemsError;
+
+      clearCart();
+      window.location = "/success";
     } catch (err) {
-      console.error("Google Sheets Error:", err);
+      console.error("Supabase Error:", err.message);
       setError("Could not save your order. Please try again.");
-      setLoading(false);
     }
+
+    setLoading(false);
   };
 
   return (
